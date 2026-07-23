@@ -4,15 +4,36 @@ name: CI
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  build:
+  integration-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout du code
         uses: actions/checkout@v4
 
-      - name: Afficher les infos de l'événement
+      - name: Démarrer l'app avec Docker Compose
+        run: docker compose up -d
+
+      - name: Attendre que l'app réponde (retry pendant 60s max)
         run: |
-          echo "Commit : ${{ github.sha }}"
-          echo "Auteur : ${{ github.actor }}"
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3000 > /dev/null; then
+              echo "App prête !"
+              exit 0
+            fi
+            echo "Tentative $i... pas encore prête"
+            sleep 2
+          done
+          echo "L'app n'a jamais répondu"
+          exit 1
+
+      - name: Afficher les logs si ça échoue
+        if: failure()
+        run: docker compose logs
+
+      - name: Arrêter les conteneurs
+        if: always()
+        run: docker compose down
