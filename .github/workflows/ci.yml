@@ -10,30 +10,63 @@ on:
 jobs:
   integration-test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout du code
         uses: actions/checkout@v4
 
-      - name: Démarrer l'app avec Docker Compose
+      - name: Démarrer l'application
         run: docker compose up -d
 
-      - name: Attendre que l'app réponde (retry pendant 60s max)
+      - name: Attendre que l'application réponde
         run: |
           for i in $(seq 1 30); do
             if curl --fail --silent http://localhost:3000 > /dev/null; then
-              echo "App prête !"
+              echo "Application prête !"
               exit 0
             fi
-            echo "Tentative $i... pas encore prête"
+            echo "Tentative $i..."
             sleep 2
           done
-          echo "L'app n'a jamais répondu"
+
+          echo "L'application n'a pas démarré"
           exit 1
 
-      - name: Afficher les logs si ça échoue
+      - name: Afficher les logs si échec
         if: failure()
         run: docker compose logs
 
       - name: Arrêter les conteneurs
         if: always()
         run: docker compose down
+
+  build-and-push:
+    needs: integration-test
+
+    # On ne publie que lors d'un push sur main
+    if: github.event_name == 'push'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Connexion au GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Construire et publier l'image Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
